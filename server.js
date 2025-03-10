@@ -10,9 +10,9 @@ const http = require("http");
 const app = express();
 const server = http.createServer(app);
 const io = new Server(server, {
-    cors: {
-        origin: "*",
-    },
+  cors: {
+    origin: "*",
+  },
 });
 
 const PORT = process.env.PORT || 3000;
@@ -20,15 +20,15 @@ const MONGO_URI = process.env.MONGO_URI || "mongodb://127.0.0.1:27017/incubadora
 
 // Swagger Configuration
 const swaggerOptions = {
-    definition: {
-        openapi: "3.0.0",
-        info: {
-            title: "API Sensores y Actuadores",
-            version: "1.0.0",
-            description: "API para la gestión de sensores y actuadores",
-        },
+  definition: {
+    openapi: "3.0.0",
+    info: {
+      title: "API Sensores y Actuadores",
+      version: "1.0.0",
+      description: "API para la gestión de sensores y actuadores",
     },
-    apis: ["./server.js"], // Archivos donde están los endpoints
+  },
+  apis: ["./server.js"], // Archivos donde están los endpoints
 };
 
 const swaggerDocs = swaggerJsdoc(swaggerOptions);
@@ -36,21 +36,21 @@ app.use("/api-docs", swaggerUi.serve, swaggerUi.setup(swaggerDocs));
 
 // WebSockets
 io.on("connection", (socket) => {
-    console.log("Cliente conectado");
+  console.log("Cliente conectado");
 
-    socket.on("nuevoDato", async (data) => {
-        try {
-            const nuevoRegistro = new SensorActuador(data);
-            await nuevoRegistro.save();
-            io.emit("datoGuardado", nuevoRegistro);
-        } catch (error) {
-            console.error("Error al guardar dato", error);
-        }
-    });
+  socket.on("nuevoDato", async (data) => {
+    try {
+      const nuevoRegistro = new SensorActuador(data);
+      await nuevoRegistro.save();
+      io.emit("datoGuardado", nuevoRegistro);
+    } catch (error) {
+      console.error("Error al guardar dato", error);
+    }
+  });
 
-    socket.on("disconnect", () => {
-        console.log("Cliente desconectado");
-    });
+  socket.on("disconnect", () => {
+    console.log("Cliente desconectado");
+  });
 });
 
 // Middleware
@@ -61,7 +61,15 @@ app.use(express.json());
 mongoose.connect(MONGO_URI).then(() => console.log("MongoDB conectado"))
   .catch(err => console.error("Error al conectar a MongoDB", err));
 
-// Definir el esquema
+// Definir el esquema para los usuarios
+const userSchema = new mongoose.Schema({
+  username: { type: String, required: true, unique: true },
+  password: { type: String, required: true }
+});
+
+const User = mongoose.model("User", userSchema);
+
+// Definir el esquema de los sensores y actuadores
 const sensorSchema = new mongoose.Schema({
   tipo: String,
   nombre: String,
@@ -71,7 +79,6 @@ const sensorSchema = new mongoose.Schema({
 });
 
 const SensorActuador = mongoose.model("SensoresActuadores", sensorSchema);
-
 
 /**
  * @swagger
@@ -296,6 +303,85 @@ app.get("/sensoresactuadores/buscar", async (req, res) => {
     res.json(dispositivos);
   } catch (error) {
     res.status(500).json({ error: "Error al realizar la búsqueda" });
+  }
+});
+
+// Crear un nuevo usuario
+/**
+ * @swagger
+ * /usuarios:
+ *   post:
+ *     summary: Crea un nuevo usuario
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               username:
+ *                 type: string
+ *               password:
+ *                 type: string
+ *     responses:
+ *       201:
+ *         description: Usuario creado correctamente
+ *       400:
+ *         description: Error al crear el usuario
+ */
+app.post("/usuarios", async (req, res) => {
+  const { username, password } = req.body;
+
+  try {
+    const nuevoUsuario = new User({ username, password });
+    await nuevoUsuario.save();
+    res.status(201).json(nuevoUsuario);
+  } catch (error) {
+    res.status(400).json({ error: "Error al crear el usuario" });
+  }
+});
+
+// Iniciar sesión (login)
+/**
+ * @swagger
+ * /login:
+ *   post:
+ *     summary: Inicia sesión con un usuario y contraseña
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               username:
+ *                 type: string
+ *               password:
+ *                 type: string
+ *     responses:
+ *       200:
+ *         description: Login exitoso
+ *       400:
+ *         description: Usuario o contraseña incorrectos
+ */
+app.post("/login", async (req, res) => {
+  const { username, password } = req.body;
+
+  try {
+    // Buscar el usuario
+    const usuario = await User.findOne({ username });
+    if (!usuario) {
+      return res.status(400).json({ error: "Usuario no encontrado" });
+    }
+
+    // Verificar la contraseña
+    if (usuario.password !== password) {
+      return res.status(400).json({ error: "Contraseña incorrecta" });
+    }
+
+    res.status(200).json({ mensaje: "Login exitoso" });
+  } catch (error) {
+    res.status(500).json({ error: "Error al procesar la solicitud" });
   }
 });
 
